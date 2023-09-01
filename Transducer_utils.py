@@ -69,7 +69,7 @@ class Transduction_layer(nn.Module):
         q = rearrange(self.to_q(x1), 'b n (h d) -> b h n d', h=self.heads)
         k = rearrange(self.to_k(x1), 'b n (h d) -> b h n d', h=self.heads)
         v = rearrange(self.to_v(x2), 'b n (h d) -> b h n d', h=self.heads)
-        if mask == None:
+        if mask is None:
             dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
         else:
             dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale + mask.unsqueeze(0).unsqueeze(0).repeat(1,self.heads,1, 1)
