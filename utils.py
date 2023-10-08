@@ -7,44 +7,6 @@ from scipy.interpolate import interp2d
 from torch.utils.data import DataLoader, Dataset
 
 
-class Dataset_ADR(Dataset):
-    def __init__(self, source_file='Train_data_N=500_T=1.npz'):
-        data = np.load(source_file)
-        # sensors, y_train, coeffs = Data['sensors'], Data['y_train'], Data['coeffs']
-        self.y_train = data['y_train'].reshape(500, 100, 100, 100)
-        # self.sensors = Data['sensors']
-        # self.coeffs  = Data['coeffs']
-
-    def torch_wrapper(self, array):
-        tensor = torch.from_numpy(array).to('cuda').float()
-        return tensor
-
-    def __getitem__(self, index):
-        y = self.torch_wrapper(self.y_train[index])
-        # u = self.torch_wrapper(self.sensors[index])
-        # c = self.coeffs[index]
-        return y  # ,c#, u#, c
-
-    def __len__(self):
-        return len(self.y_train)
-
-class Dataset_Burger(Dataset):
-    def __init__(self, source_file='Train_data_N=500_T=1.npz'):
-        self.y_train = np.load(source_file)
-
-    def torch_wrapper(self, array):
-        tensor = torch.from_numpy(array).to('cuda').float()
-        return tensor
-
-    def __getitem__(self, index):
-        y = self.torch_wrapper(self.y_train[index])
-
-        return y
-
-    def __len__(self):
-        return len(self.y_train)
-
-
 def sample_batch_ADR(s, n, num):
     perm = torch.randperm(n)[:num]
     idx_u = 0
@@ -69,6 +31,13 @@ def get_sampler(XP_type):
     elif XP_type == 'Burgers':
         return sample_batch_Burgers
 
+def get_loss(XP_type):
+    if XP_type in ['ADR','Burgers','MNIST']:
+        def loss_function(y, y_hat):
+            return torch.pow(y - y_hat, 2).mean()
+        return loss_function
+
+
 
 
 def loss_function(y, y_hat):
@@ -81,3 +50,54 @@ def rmse(y_hat, y_gt):
 
 def mse(y_hat, y_gt):
     return torch.pow(y_hat - y_gt, 2).sum(-1).mean()
+
+
+#### MNIST utils
+
+def shuffle(x):
+    # ps = np.random.randint(2)+1
+    ps = int(np.random.choice([1, 2, 4, 7]))
+    # ps = 1
+    idx = torch.randperm(int(784 / (ps * ps)))
+    # if torch.rand(1).item()>0.5:
+    #    x = x.transpose(-2,-1)
+    u = F.unfold(x, kernel_size=ps, stride=ps, padding=0)[:, :, idx]
+    f = F.fold(u, x.shape[-2:], kernel_size=ps, stride=ps, padding=0)
+    return f
+
+def shuffle_label(y):
+    idx = np.random.permutation(10)
+    y_ = torch.tensor([idx[a] for a in y])
+    # y = torch.nn.functional.one_hot(y_, num_classes=10)
+    return y_
+
+def generate_sample(batch, bs):
+    x = shuffle(batch[0])  # .reshape(bs,-1)
+    # x = project(batch[0].reshape(bs,-1))
+    y = shuffle_label(batch[1])
+    # print(x.shape,x.reshape(bs,-1).shape,batch[1].shape)
+    return x.reshape(bs,
+                     -1), y  # torch.cat([x.reshape(bs,-1),y.unsqueeze(-1)/10],dim=-1)# x.reshape(bs,-1), y #torch.cat([x.reshape(bs,-1),y],dim=-1), y
+
+
+def generate_sample_noperm(batch, bs):
+    # idx = torch.randperm(784)
+    b_ = batch[0].reshape(bs, -1)  # [:,idx]
+    return b_, batch[1]
+
+
+# def generate_sample_noperm(batch,bs):
+#     #idx = torch.randperm(784)
+#     b_ = batch[0].reshape(bs,-1)#[:,idx]
+#     return torch.cat([b_,batch[1].unsqueeze(-1)/10],dim=-1)
+
+def generate_batch(meta_bs):
+    b_, t_ = [], []
+    for i, b in enumerate(train_loader):
+        ba, target = generate_sample(b, bs)
+        b_.append(ba)
+        t_.append(target)
+        if i == meta_bs - 1:
+            return torch.stack(b_, dim=0), torch.stack(t_, dim=0)
+
+

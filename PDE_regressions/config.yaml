@@ -1,0 +1,9 @@
+n : 100 # Total number of items
+N_min : 30 # Min number of items to consider
+N_max : n # Max number of items to consider
+n_func_pred : 10 # Number of items to be predicted
+n_iter : 200000 # Number of meta-training gradient steps
+lr : 2e-4  # Learning rate
+grad_clip : 4.0 # gradient cliping param (not needed)
+reduce_n_step : 50000
+reduce_coeff : 0.5
