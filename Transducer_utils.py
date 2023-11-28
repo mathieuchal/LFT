@@ -1,6 +1,3 @@
-
-
-
 import torch
 from torch import nn
 from einops import rearrange
@@ -13,14 +10,14 @@ class FFT1(nn.Module):
         self.modes = modes
 
     def forward(self, x):
-        return torch.view_as_real(torch.fft.rfft(x, dim=-1, norm="ortho")[:, :, :self.modes]).flatten(start_dim=-2)
+        return torch.view_as_real(torch.fft.rfft(x, dim=-1, norm="ortho")[: ,: ,: ,:self.modes]).flatten(start_dim=-2)
 
 class IFFT1(nn.Module):
     def __init__(self):
         super().__init__()
 
     def forward(self, x):
-        x = torch.view_as_complex(x.reshape(x.size(0), -1, 2))  # complex X up/down X num_vectors
+        x = torch.view_as_complex(x.reshape(x.size(0) ,x.size(1), -1, 2))  # complex X up/down X num_vectors
         return torch.fft.irfft(x, dim=-1, n=(100), norm="ortho")
 
 class FFT2(nn.Module):
@@ -42,39 +39,51 @@ class IFFT2(nn.Module):
     def forward(self, x):
         d = self.d
         d_s = int(d * d)
-        x = torch.view_as_complex(x.reshape(x.size(0), 2, 2, d_s, 2))  # torch.stack(torch.chunk(x, 2, dim=-1),dim=-1))
+        x = torch.view_as_complex(x.reshape(x.size(0), 2, 2, d_s, 2))
         f = torch.zeros((x.size(0), 2, 64, 33), dtype=torch.complex64).cuda()
         f[:, :, :d, :d] = x[:, :, 0, :].reshape(-1, 2, d, d)
         f[:, :, -d:, :d] = x[:, :, 1, :].reshape(-1, 2, d, d)
         return torch.fft.irfft2(f, dim=(-2, -1), s=(64, 64), norm="ortho")
 
 class Transduction_layer(nn.Module):
-    def __init__(self, dim, heads=8, dim_head=64, modes=12):
+    def __init__(self, dim, heads=8, dim_head=64, transform_u=False):
         super().__init__()
         inner_dim = dim_head * heads
         self.heads = heads
-        self.modes1 = modes
-        self.scale = nn.Parameter(torch.ones(1))
+        # self.modes1 = modes
+        self.scale = nn.Parameter(torch.ones(1) ,requires_grad=True)
         self.kernel = nn.Softmax(dim=-1)
         self.proj_V1 = nn.Linear(dim, inner_dim, bias=False)
         self.proj_V2 = nn.Linear(dim, inner_dim, bias=False)
         self.proj_U = nn.Linear(dim, inner_dim, bias=False)
-        self.to_out = nn.Linear(inner_dim, dim, bias=False)
+        # self.to_out = nn.Linear(inner_dim, dim, bias=False)
+        self.transform_u = transform_u
+        if self.transform_u:
+            self.proj_U = nn.Linear(dim, inner_dim, bias=False)
+            self.to_out = nn.Sequential(Rearrange('b h n d -> b n (h d)'), nn.Linear(inner_dim, dim, bias=False))
+        else:
+            self.proj_U = nn.Identity()
+            # self.to_out = nn.Identity()
+            # self.to_out = lambda x : x.sum(axis=1)
+            self.to_out = nn.Sequential(Rearrange('b h n d -> b n (h d)'), nn.Linear(head s *10, 10, bias=False))
 
-    def forward(self, x, mask=None):
-        x1, x2 = torch.chunk(x, 2, dim=0)
-        q = rearrange(self.proj_V1(x1), 'b n (h d) -> b h n d', h=self.heads)
-        k = rearrange(self.proj_V2(x1), 'b n (h d) -> b h n d', h=self.heads)
-        v = rearrange(self.proj_U(x2), 'b n (h d) -> b h n d', h=self.heads)
+    def forward(self, inp , mask=None):
+        x ,y = inp
+        q = rearrange(self.proj_V1(x), 'b n (h d) -> b h n d', h=self.heads)
+        k = rearrange(self.proj_V2(x), 'b n (h d) -> b h n d', h=self.heads)
+        if self.transform_u:
+            v = rearrange(self.proj_U(y), 'b n (h d) -> b h n d', h=self.heads)
+        else:
+            v = y.unsqueeze(1).repeat(1, self.heads, 1, 1)
         if mask is None:
             dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
         else:
-            dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale + mask.unsqueeze(0).unsqueeze(0).repeat(1,self.heads,1, 1)
+            dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale + mask.unsqueeze(1).repeat(1 ,self.heads ,1, 1)
 
         k_dots = self.kernel(dots)
         out = torch.matmul(k_dots, v)
-        out = rearrange(out, 'b h n d -> b n (h d)')
-        return torch.cat([x1, x2 + self.to_out(out)], dim=0)
+        # out = rearrange(out, 'b h n d -> b n (h d)')
+        return (x, y + self.to_out(out))
 
 class FeedForward(nn.Module):
     def __init__(self, dim, hidden_dim):
@@ -89,88 +98,83 @@ class FeedForward(nn.Module):
     def forward(self, x):
         return self.net(x) + x
 
-
-class Attention_transduction_MNIST(nn.Module):
-    def __init__(self, dim, heads=8, dim_head=64):
+class FeedForward_id_u(nn.Module):
+    def __init__(self, dim, hidden_dim):
         super().__init__()
-        # inner_dim = dim_head * heads
-        inner_dim = dim_head * heads
-        inner_dim_v = 10 * heads
-        self.heads = heads
-        # self.scale = dim_head ** -0.5
-        self.scale = nn.Parameter(torch.ones(1))  # * (dim_head ** -0.5))
-        self.attend = nn.Softmax(dim=-1)
-        self.to_q = nn.Linear(dim, inner_dim, bias=False)
-        self.to_k = nn.Linear(dim, inner_dim, bias=False)
-        self.to_v = nn.Linear(10, inner_dim_v, bias=False)
-        # self.to_v = nn.Sequential(nn.Linear(self.modes*2, inner_dim, bias=False),nn.GELU(),nn.Linear(inner_dim, inner_dim, bias=False))
-        self.to_out = nn.Linear(inner_dim_v, 10, bias=False)
+        self.net_v = FeedForward(dim, hidden_dim)
 
-    def forward(self, x, mask=None, last=False):
-        # print(x.shape)
-        x1, x2 = x  # torch.chunk(x, 2, dim=0)
-        # x1 = self.norm(x1)
-        # x2 = self.norm(x2)
-        q = rearrange(self.to_q(x1), 'b n (h d) -> b h n d', h=self.heads)
-        k = rearrange(self.to_k(x1), 'b n (h d) -> b h n d', h=self.heads)
-        # v = rearrange(self.to_v(x2), 'b n (h d) -> b h n d', h=self.heads)
-        v = x2.unsqueeze(1).repeat(1, self.heads, 1, 1)
-        # q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.heads), qkv)
-        # print(q.shape,k.shape,v.shape)
-        # print(torch.matmul(q, k.transpose(-1, -2)).shape)
+    def forward(self, inp):
+        return (self.net_v(inp[0]) ,inp[1])
 
-        if mask == None:
-            dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
-        else:
-            # dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale + mask.unsqueeze(0).unsqueeze(0).repeat(1,self.heads,1, 1)
-            dots = torch.pow(q.unsqueeze(-2) - k.unsqueeze(-3), 2).sum(-1) * self.scale + mask.unsqueeze(0).unsqueeze(
-                0).repeat(1, self.heads, 1, 1)
-            # dots = torch.exp(-0.5*dists)
-            # dots = dots / torch.sum(dots,-1,keepdim=True)
-        # print(dots.shape,mask.shape)
-        attn = self.attend(dots)
-        out = torch.matmul(attn, v)
-        # print(out.shape)
-        out = rearrange(out, 'b h n d -> b n (h d)')
-        # out = out.mean(1)
-        # print(out.shape)
-        out = self.to_out(out)
-        # out[10:]=0
-        return (x1, x2 + out)
+class FeedForward_shared(nn.Module):
+    def __init__(self, dim, hidden_dim):
+        super().__init__()
+        self.net_vu = FeedForward(dim, hidden_dim)
+
+    def forward(self, inp):
+        return (self.net_vu(inp[0]) ,self.net_vu(inp[1]))
+
+class FeedForward_unshared(nn.Module):
+    def __init__(self, dim, hidden_dim):
+        super().__init__()
+        self.net_u = FeedForward(dim, hidden_dim)
+        self.net_v = FeedForward(dim, hidden_dim)
+
+    def forward(self, inp):
+        return (self.net_v(inp[0]) ,self.net_u(inp[1]))
+
 
 class Transducer(nn.Module):
-    def __init__(self, modes, depth, heads, dim_head, mlp_dim):
+
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, freq_transform=True, fflayer=False, transform_u=False):
         super().__init__()
-        self.dim = modes * 2
-        self.modes = modes
+
+        self.dim = dim  # modes * 2
+        self.heads = heads
+        self.dim_head = dim_head
+        # self.modes = modes
         self.layers = nn.ModuleList([])
-        self.fft = FFT1(modes)
-        self.ifft = IFFT1()
+
+        self.freq_transform = freq_transform
+        if self.freq_transform:
+            self.fft = FFT1(int(di m /2))
+            self.ifft = IFFT1()
+
+        if fflaye r= ='both':
+            FF = FeedForward_unshared
+        elif fflaye r= ='shared':
+            FF = FeedForward_shared
+        elif fflaye r= ='no_output':
+            FF = FeedForward_id_u
+
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                Attention_transduction_Fourier(self.dim, heads=heads, dim_head=dim_head, modes=modes),
-                FeedForward(self.dim, mlp_dim)
+                FF(self.dim, mlp_dim),
+                Transduction_layer(self.dim, heads=self.heads, dim_head=self.dim_head, transform_u=transform_u)
             ]))
 
     def forward(self, x, y, mask):
-        # inp = torch.view_as_real(torch.fft.rfft(xy, dim=-1)[:, :, :self.modes]).reshape(2,xy.size(1),-1)
-        xy = torch.stack([x, y], dim=0)
-        inp = self.fft(xy)
+        inp = (x ,y)
+        if self.freq_transform:
+            inp = torch.stack([x, y], dim=0)
+            inp = self.fft(inp)
 
-        for attn, ff in self.layers:
-            for i in range(1):
-                inp = ff(inp)
-                inp = attn(inp, mask)
-                # inp = torch.view_as_complex(inp.reshape(2,xy.size(1),self.modes,2))
-        # inp = torch.fft.irfft(inp, dim=-1,n=xy.size(2))
+        for ff, attn in self.layers:
+            inp = ff(inp)
+            inp = attn(inp, mask)
 
-        return self.ifft(inp[-1])
+        if self.freq_transform:
+            inp = self.ifft(inp[1])
+        else:
+            inp = inp[1]
 
-def generate_mask(sz: int, n_func_pred: int):
+        return inp
+
+def generate_mask(sz: int, n_func_pred: int, device: str):
     """Generates an upper-triangular matrix of -inf, with zeros on diag."""
     mat = torch.zeros(sz, sz)
     mat[:, :n_func_pred] = float('-inf')
-    return mat
+    return mat.to(device)
 
 
 def init_weights(module):
@@ -179,66 +183,45 @@ def init_weights(module):
         if module.bias is not None:
             module.bias.data.zero_()
 
-def get_model(XP_type):
+def get_model(XP_type, device):
     if XP_type == 'ADR':
-        model = Transducer(modes=50,
-        depth=8,
-        heads=32,
-        mlp_dim=100,
-        dim_head=16)
+        model = Transducer(dim=100,
+                           depth=8,
+                           heads=32,
+                           mlp_dim=100,
+                           dim_head=16,
+                           freq_transform=True,
+                           fflayer='shared',
+                           transform_u=True)
+
     elif XP_type == 'Burgers':
-        model = Transducer(
-            dim=1152,
-            depth=10,
-            heads=64,
-            mlp_dim=1200,
-            dim_head=8,
-            d=12
-        )
+        model = Transducer(dim=100,
+                           depth=5,
+                           heads=16,
+                           mlp_dim=100,
+                           dim_head=32,
+                           freq_transform=True,
+                           fflayer='shared',
+                           transform_u=True)
+    elif XP_type == 'MNIST':
+        model = Transducer(dim=784,
+                           depth=2,
+                           heads=32,
+                           mlp_dim=512,
+                           dim_head=32,
+                           freq_transform=False,
+                           fflayer='no_output',
+                           transform_u=False)
+    return model.to(device)
 
-    return model.cuda()
+# class Transducer(nn.Module):
+#    def __init__(self, *, dim_in, dim, dimout, depth, heads, mlp_dim, dim_head=32, modes=50):
+#        super().__init__()
+#        self.transformer = Trans(dim, depth, heads, dim_head, mlp_dim)
+#        self.linear_head = nn.Linear(dim_in, dim)
 
-
-class Trans(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim):
-        super().__init__()
-        self.layers = nn.ModuleList([])
-        for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                Attention_transduction(dim, heads=heads, dim_head=dim_head),
-                FeedForward(dim, mlp_dim),
-                # nn.LayerNorm(10)
-            ]))
-
-    def forward(self, inp, mask):
-        # inp = torch.view_as_real(torch.fft.rfft(xy, dim=-1)[:, :, :self.modes]).reshape(2,xy.size(1),-1)
-        for attn, ff in self.layers:
-            for i in range(1):
-                # print(inp.shape)
-                inp = (ff(inp[0]), inp[1])
-                inp = attn(inp, mask)
-                # inp = (ff(inp[0]),inp[1])
-                # inp = ff(inp) + inp
-        return inp  # we take O(v) = u
-class Transducer(nn.Module):
-    def __init__(self, *, dim_in, dim, dimout, depth, heads, mlp_dim, dim_head=32, modes=50):
-        super().__init__()
-        # self.encoder = nn.Linear(dim_in, dim)
-        # self.encoder_target = nn.Linear(1, 10)
-        # self.modes = modes
-        self.transformer = Trans(dim, depth, heads, dim_head, mlp_dim)
-        # self.transformer = Trans_Fourier_DONLIKE(dim, depth, heads, dim_head, mlp_dim, modes=self.modes)
-        self.linear_head = nn.Linear(dim_in, dim)
-        # self.conv_init = Conv2d(in_channels=1, out_channels=1, kernel_size=(3,3))
-        # self.sm = nn.Softmax(dim=-1)
-
-    def forward(self, x, y, mask):
-        # x = self.encoder(x)
-        # y = self.encoder_target(y)
-        # print(x.shape,y.shape)
-        # x = torch.permute(
-        xy = (x, y)
-        # xy = (self.linear_head(x),y) #torch.stack([x,y],dim=0).squeeze(-1)
-        x_out = self.transformer(xy, mask)[1]
-        return x_out  # self.linear_head(x_out)
+#    def forward(self, x, y, mask):
+#        xy = (x, y)
+#        x_out = self.transformer(xy, mask)[1]
+#        return x_out
 
