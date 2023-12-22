@@ -10,22 +10,14 @@ class FFT1(nn.Module):
         self.modes = modes
 
     def forward(self, x):
-<<<<<<< HEAD
         return torch.view_as_real(torch.fft.rfft(x, dim=-1, norm="ortho")[:,:,:,:self.modes]).flatten(start_dim=-2)
-=======
-        return torch.view_as_real(torch.fft.rfft(x, dim=-1, norm="ortho")[: ,: ,: ,:self.modes]).flatten(start_dim=-2)
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
 
 class IFFT1(nn.Module):
     def __init__(self):
         super().__init__()
 
     def forward(self, x):
-<<<<<<< HEAD
         x = torch.view_as_complex(x.reshape(x.size(0),x.size(1), -1, 2))  # complex X up/down X num_vectors
-=======
-        x = torch.view_as_complex(x.reshape(x.size(0) ,x.size(1), -1, 2))  # complex X up/down X num_vectors
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
         return torch.fft.irfft(x, dim=-1, n=(100), norm="ortho")
 
 class FFT2(nn.Module):
@@ -47,11 +39,7 @@ class IFFT2(nn.Module):
     def forward(self, x):
         d = self.d
         d_s = int(d * d)
-<<<<<<< HEAD
         x = torch.view_as_complex(x.reshape(x.size(0), 2, 2, d_s, 2)) 
-=======
-        x = torch.view_as_complex(x.reshape(x.size(0), 2, 2, d_s, 2))
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
         f = torch.zeros((x.size(0), 2, 64, 33), dtype=torch.complex64).cuda()
         f[:, :, :d, :d] = x[:, :, 0, :].reshape(-1, 2, d, d)
         f[:, :, -d:, :d] = x[:, :, 1, :].reshape(-1, 2, d, d)
@@ -62,43 +50,25 @@ class Transduction_layer(nn.Module):
         super().__init__()
         inner_dim = dim_head * heads
         self.heads = heads
-<<<<<<< HEAD
         #self.modes1 = modes
         self.scale = nn.Parameter(torch.ones(1),requires_grad=True)
-=======
-        # self.modes1 = modes
-        self.scale = nn.Parameter(torch.ones(1) ,requires_grad=True)
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
         self.kernel = nn.Softmax(dim=-1)
         self.proj_V1 = nn.Linear(dim, inner_dim, bias=False)
         self.proj_V2 = nn.Linear(dim, inner_dim, bias=False)
         self.proj_U = nn.Linear(dim, inner_dim, bias=False)
-<<<<<<< HEAD
-        #self.to_out = nn.Linear(inner_dim, dim, bias=False)
-=======
-        # self.to_out = nn.Linear(inner_dim, dim, bias=False)
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
         self.transform_u = transform_u
         if self.transform_u:
             self.proj_U = nn.Linear(dim, inner_dim, bias=False)
             self.to_out = nn.Sequential(Rearrange('b h n d -> b n (h d)'), nn.Linear(inner_dim, dim, bias=False))
         else:
             self.proj_U = nn.Identity()
-<<<<<<< HEAD
+
             #self.to_out = nn.Identity()
             #self.to_out = lambda x : x.sum(axis=1)
             self.to_out = nn.Sequential(Rearrange('b h n d -> b n (h d)'), nn.Linear(heads*10, 10, bias=False))
 
     def forward(self, inp , mask=None):
         x,y = inp
-=======
-            # self.to_out = nn.Identity()
-            # self.to_out = lambda x : x.sum(axis=1)
-            self.to_out = nn.Sequential(Rearrange('b h n d -> b n (h d)'), nn.Linear(head s *10, 10, bias=False))
-
-    def forward(self, inp , mask=None):
-        x ,y = inp
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
         q = rearrange(self.proj_V1(x), 'b n (h d) -> b h n d', h=self.heads)
         k = rearrange(self.proj_V2(x), 'b n (h d) -> b h n d', h=self.heads)
         if self.transform_u:
@@ -108,19 +78,11 @@ class Transduction_layer(nn.Module):
         if mask is None:
             dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
         else:
-<<<<<<< HEAD
             dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale + mask.unsqueeze(1).repeat(1,self.heads,1, 1)
 
         k_dots = self.kernel(dots)
         out = torch.matmul(k_dots, v)
         #out = rearrange(out, 'b h n d -> b n (h d)')
-=======
-            dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale + mask.unsqueeze(1).repeat(1 ,self.heads ,1, 1)
-
-        k_dots = self.kernel(dots)
-        out = torch.matmul(k_dots, v)
-        # out = rearrange(out, 'b h n d -> b n (h d)')
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
         return (x, y + self.to_out(out))
 
 class FeedForward(nn.Module):
@@ -141,7 +103,6 @@ class FeedForward_id_u(nn.Module):
         super().__init__()
         self.net_v = FeedForward(dim, hidden_dim)
 
-<<<<<<< HEAD
     def forward(self, inp):
         return (self.net_v(inp[0]),inp[1])
     
@@ -156,32 +117,10 @@ class FeedForward_shared(nn.Module):
 class FeedForward_unshared(nn.Module):
     def __init__(self, dim, hidden_dim):
         super().__init__()
-=======
-class FeedForward_id_u(nn.Module):
-    def __init__(self, dim, hidden_dim):
-        super().__init__()
-        self.net_v = FeedForward(dim, hidden_dim)
-
-    def forward(self, inp):
-        return (self.net_v(inp[0]) ,inp[1])
-
-class FeedForward_shared(nn.Module):
-    def __init__(self, dim, hidden_dim):
-        super().__init__()
-        self.net_vu = FeedForward(dim, hidden_dim)
-
-    def forward(self, inp):
-        return (self.net_vu(inp[0]) ,self.net_vu(inp[1]))
-
-class FeedForward_unshared(nn.Module):
-    def __init__(self, dim, hidden_dim):
-        super().__init__()
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
         self.net_u = FeedForward(dim, hidden_dim)
         self.net_v = FeedForward(dim, hidden_dim)
 
     def forward(self, inp):
-<<<<<<< HEAD
         return (self.net_v(inp[0]),self.net_u(inp[1]))
 
 
@@ -207,35 +146,6 @@ class Transducer(nn.Module):
             FF = FeedForward_shared
         elif fflayer=='no_output':
             FF = FeedForward_id_u
-            
-=======
-        return (self.net_v(inp[0]) ,self.net_u(inp[1]))
-
-
-class Transducer(nn.Module):
-
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, freq_transform=True, fflayer=False, transform_u=False):
-        super().__init__()
-
-        self.dim = dim  # modes * 2
-        self.heads = heads
-        self.dim_head = dim_head
-        # self.modes = modes
-        self.layers = nn.ModuleList([])
-
-        self.freq_transform = freq_transform
-        if self.freq_transform:
-            self.fft = FFT1(int(di m /2))
-            self.ifft = IFFT1()
-
-        if fflaye r= ='both':
-            FF = FeedForward_unshared
-        elif fflaye r= ='shared':
-            FF = FeedForward_shared
-        elif fflaye r= ='no_output':
-            FF = FeedForward_id_u
-
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
                 FF(self.dim, mlp_dim),
@@ -243,7 +153,6 @@ class Transducer(nn.Module):
             ]))
 
     def forward(self, x, y, mask):
-<<<<<<< HEAD
         inp = (x,y)
         if self.freq_transform:
             inp = torch.stack([x, y], dim=0)
@@ -252,27 +161,10 @@ class Transducer(nn.Module):
         for ff, attn in self.layers:
             inp = ff(inp)
             inp = attn(inp, mask)
-                
-=======
-        inp = (x ,y)
-        if self.freq_transform:
-            inp = torch.stack([x, y], dim=0)
-            inp = self.fft(inp)
-
-        for ff, attn in self.layers:
-            inp = ff(inp)
-            inp = attn(inp, mask)
-
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
         if self.freq_transform:
             inp = self.ifft(inp[1])
         else:
             inp = inp[1]
-<<<<<<< HEAD
-            
-=======
-
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
         return inp
 
 def generate_mask(sz: int, n_func_pred: int, device: str):
@@ -298,11 +190,7 @@ def get_model(XP_type, device):
                            freq_transform=True,
                            fflayer='shared',
                            transform_u=True)
-<<<<<<< HEAD
-    
-=======
 
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
     elif XP_type == 'Burgers':
         model = Transducer(dim=100,
                            depth=5,
@@ -323,25 +211,4 @@ def get_model(XP_type, device):
                            transform_u=False)
     return model.to(device)
 
-<<<<<<< HEAD
-
-    
-    
-#class Transducer(nn.Module):
-=======
-# class Transducer(nn.Module):
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
-#    def __init__(self, *, dim_in, dim, dimout, depth, heads, mlp_dim, dim_head=32, modes=50):
-#        super().__init__()
-#        self.transformer = Trans(dim, depth, heads, dim_head, mlp_dim)
-#        self.linear_head = nn.Linear(dim_in, dim)
-
-#    def forward(self, x, y, mask):
-#        xy = (x, y)
-#        x_out = self.transformer(xy, mask)[1]
-<<<<<<< HEAD
-#        return x_out 
-=======
-#        return x_out
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
 
