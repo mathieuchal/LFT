@@ -8,7 +8,6 @@ from torch.utils.data import DataLoader, Dataset
 import torch
 import yaml
 
-<<<<<<< HEAD
 def prepare_target(target, n_func_pred, device, xp_type='ADR'):
     
     if xp_type=='ADR':
@@ -20,21 +19,7 @@ def prepare_target(target, n_func_pred, device, xp_type='ADR'):
         t = torch.nn.functional.one_hot(target, num_classes=10)
         t_ = t.clone()
         t_[:,:n_func_pred] = 0.
-        
-=======
 
-def prepare_target(target, n_func_pred, device, xp_type='ADR'):
-    if xp_type == 'ADR':
-        t_ = target.clone()
-        t_[:, :n_func_pred] = 0.
-        t = target
-
-    elif xp_type == 'MNIST':
-        t = torch.nn.functional.one_hot(target, num_classes=10)
-        t_ = t.clone()
-        t_[:, :n_func_pred] = 0.
-
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
     return t.to(device).float(), t_.to(device).float()
 
 
@@ -57,10 +42,7 @@ def sample_batch_Burgers(s, n, num):
     # s_bis = s[idx_sbis,perm].float()
     return u_, s_  # , s_bis
 
-<<<<<<< HEAD
-=======
 
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
 def sample_batch_MNIST(s, n, num):
     perm = torch.randperm(n)[:num]
     idx_u = 0
@@ -69,7 +51,6 @@ def sample_batch_MNIST(s, n, num):
     y = s[perm, :, idx_s]
     return x, y
 
-<<<<<<< HEAD
 def generate_batch(meta_bs):
     b_, t_ = [],[]
     for i, b in enumerate(train_loader):
@@ -78,17 +59,6 @@ def generate_batch(meta_bs):
         t_.append(target)
         if i==meta_bs-1:
             return torch.stack(b_,dim=0),torch.stack(t_,dim=0)
-=======
-
-def generate_batch(meta_bs):
-    b_, t_ = [], []
-    for i, b in enumerate(train_loader):
-        ba, target = generate_sample(b, bs)
-        b_.append(ba)
-        t_.append(target)
-        if i == meta_bs - 1:
-            return torch.stack(b_, dim=0), torch.stack(t_, dim=0)
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
 
 
 def get_sampler(XP_type):
@@ -98,23 +68,13 @@ def get_sampler(XP_type):
         return sample_batch_Burgers
     elif XP_type == 'MNIST':
         return sample_batch_Burgers
-<<<<<<< HEAD
-        
-=======
-
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
 
 def get_loss(XP_type):
     if XP_type in ['ADR', 'Burgers', 'MNIST']:
         def loss_function(y, y_hat):
             return torch.pow(y - y_hat, 2).mean()
-
-<<<<<<< HEAD
-=======
         return loss_function
 
-
->>>>>>> eeca32a21b016bf0af68c229ad6355c21c35b32d
 def loss_function(y, y_hat):
     return torch.pow(y - y_hat, 2).mean()  # /n_func_pred
 
