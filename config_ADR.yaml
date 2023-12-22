@@ -1,18 +1,21 @@
-bs : 110 # Total number of items
+bs : 100 # Total number of items
 n_func_pred : 10 # Number of items to be predicted
 n_iter : 200000 # Number of meta-training gradient steps
 lr : 2e-4  # Learning rate
 grad_clip : 4.0 # gradient cliping param (not needed)
 reduce_n_step : 50000
-reduce_coeff : 0.5
+reduce_lr_coeff : 0.5
+meta_batch_size : 5
+epochs : 500
+save_interval : 50000
+log_interval : 1
 
-indim : 784  # embedding dimension
+indim : 100  # embedding dimension
 outdim : 10
 d_hid : 784  # dimension of the feedforward network model in nn.TransformerEncoder
 nlayers : 2  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
 nhead : 32  # number of heads in nn.MultiheadAttention
 dropout : 0  # dropout probability
 
-meta_bs : 1
-epochs : 500
-save_interval : 20
+save_path : '/media/data_cifs_lrs/projects/prj_control/mathieu/Operator/Transfo/PDE_reg/Test1/'
+data_path : '/media/data_cifs_lrs/projects/prj_control/mathieu/Operator/Transfo/PDE_reg/'
